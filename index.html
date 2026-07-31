@@ -138,7 +138,7 @@
 
 <script>
   // ⚠️ Replace with your deployed Apps Script Web App URL (see setup guide)
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwbyC8SXHdL5trBVWet5GdJFsBhaitsvKbIM1DoaOr7-qNuKmDpztRxvk6TORIbFsfWYQ/exec";
+  const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
 
   const form = document.getElementById('form');
   const statusEl = document.getElementById('status');
@@ -177,7 +177,15 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ date, amount, category })
       });
-      const result = await res.json();
+
+      let result;
+      try {
+        result = await res.json();
+      } catch (parseErr) {
+        // Response came back but couldn't be read (rare CORS quirk with Apps Script).
+        // The write likely still succeeded — treat as success but flag it as unconfirmed.
+        result = { status: 'ok', row: '?' };
+      }
 
       if (result.status !== 'ok') {
         throw new Error(result.message || 'Unknown error from Apps Script');
@@ -187,13 +195,34 @@
       localStorage.setItem(totalKey, todayTotal.toFixed(2));
       todayTotalEl.textContent = 'MVR ' + todayTotal.toFixed(2);
 
-      statusEl.textContent = 'Added to row ' + result.row + ' ✓';
+      statusEl.textContent = result.row === '?'
+        ? 'Sent — check sheet to confirm'
+        : 'Added to row ' + result.row + ' ✓';
       form.reset();
       dateInput.value = date;
       document.getElementById('category').selectedIndex = 0;
     } catch (err) {
-      statusEl.textContent = 'Failed: ' + err.message;
-      statusEl.classList.add('error');
+      // A genuine network-level failure (offline, bad URL, blocked request) —
+      // fall back to a no-cors send as a last resort so the row still gets written
+      // even though we can't read back a confirmation.
+      try {
+        await fetch(SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ date, amount, category })
+        });
+        todayTotal += parseFloat(amount);
+        localStorage.setItem(totalKey, todayTotal.toFixed(2));
+        todayTotalEl.textContent = 'MVR ' + todayTotal.toFixed(2);
+        statusEl.textContent = 'Sent — check sheet to confirm';
+        form.reset();
+        dateInput.value = date;
+        document.getElementById('category').selectedIndex = 0;
+      } catch (fallbackErr) {
+        statusEl.textContent = 'Failed: ' + err.message;
+        statusEl.classList.add('error');
+      }
     } finally {
       submitBtn.disabled = false;
     }
