@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spend</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1C2B22">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<style>
+  :root{
+    --ink:#1C2B22;
+    --paper:#F7F4EC;
+    --rust:#D6427E;
+    --moss:#5A7D5A;
+    --line:#D9D3C2;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh;
+    background:var(--ink);
+    font-family:var(--sans);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding: max(24px, env(safe-area-inset-top)) 16px 40px;
+  }
+  .receipt{
+    width:100%; max-width:420px;
+    background:var(--paper);
+    color:var(--ink);
+    padding:28px 24px 24px;
+    position:relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .receipt::before, .receipt::after{
+    content:""; position:absolute; left:0; right:0; height:10px;
+    background:
+      radial-gradient(circle at 8px 5px, var(--ink) 5px, transparent 6px) repeat-x;
+    background-size: 16px 10px;
+  }
+  .receipt::before{ top:-5px; }
+  .receipt::after{ bottom:-5px; transform:scaleY(-1); }
+
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--moss); margin:0 0 4px;
+  }
+  h1{
+    font-size:26px; margin:0 0 20px; letter-spacing:-0.01em;
+    border-bottom: 2px dashed var(--line); padding-bottom:16px;
+  }
+
+  .field{ margin-bottom:18px; }
+  label{
+    display:block; font-family:var(--mono); font-size:11px;
+    text-transform:uppercase; letter-spacing:.1em; color:#6b6656; margin-bottom:6px;
+  }
+  .amount-row{ display:flex; align-items:baseline; gap:6px; }
+  .amount-row span{ font-family:var(--mono); font-size:28px; color:var(--moss); }
+  input[type=number]{
+    font-family:var(--mono); font-size:28px; border:none; background:transparent;
+    width:100%; padding:0; color:var(--ink); outline:none;
+  }
+  input[type=text], input[type=date], select{
+    width:100%; font-family:var(--sans); font-size:16px; padding:10px 0;
+    border:none; border-bottom:1px solid var(--line); background:transparent;
+    color:var(--ink); outline:none; appearance:none; -webkit-appearance:none;
+  }
+  select{ font-family:var(--sans); }
+  input:focus, select:focus{ border-bottom:1px solid var(--rust); }
+
+  button{
+    width:100%; margin-top:8px; padding:16px; border:none;
+    background:var(--rust); color:var(--paper);
+    font-family:var(--mono); font-size:14px; letter-spacing:.12em; text-transform:uppercase;
+    cursor:pointer; transition:transform .08s ease, background .15s ease;
+  }
+  button:active{ transform:scale(0.98); }
+  button:disabled{ background:#a9a294; cursor:default; }
+
+  .status{
+    margin-top:14px; font-family:var(--mono); font-size:12px; text-align:center;
+    min-height:16px; color:var(--moss);
+  }
+  .status.error{ color:var(--rust); }
+
+  .total-tape{
+    margin-top:22px; padding-top:14px; border-top:2px dashed var(--line);
+    display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px;
+    color:#6b6656; text-transform:uppercase; letter-spacing:.08em;
+  }
+  .total-tape strong{ color:var(--ink); font-size:14px; }
+</style>
+</head>
+<body>
+  <form class="receipt" id="form">
+    <p class="eyebrow" id="dateline">—</p>
+    <h1>Log a spend</h1>
+
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" required>
+        <option value="" disabled selected>Choose one</option>
+        <option>Groceries</option>
+        <option>Food out</option>
+        <option>Clothes &amp; accesories</option>
+        <option>Personal care</option>
+        <option>Home appliances</option>
+        <option>Subscription</option>
+        <option>Books and hobbies</option>
+        <option>Entertainment</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="date">Date</label>
+      <input type="date" id="date" required>
+    </div>
+
+    <div class="field">
+      <label for="amount">Amount</label>
+      <div class="amount-row">
+        <span id="currencySign">MVR</span>
+        <input type="number" id="amount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required>
+      </div>
+    </div>
+
+    <button type="submit" id="submitBtn">Add to sheet</button>
+    <p class="status" id="status">&nbsp;</p>
+
+    <div class="total-tape">
+      <span>Logged today</span>
+      <strong id="todayTotal">MVR 0.00</strong>
+    </div>
+  </form>
+
+<script>
+  // ⚠️ Replace with your deployed Apps Script Web App URL (see setup guide)
+  const SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+  const form = document.getElementById('form');
+  const statusEl = document.getElementById('status');
+  const submitBtn = document.getElementById('submitBtn');
+  const dateInput = document.getElementById('date');
+  const dateline = document.getElementById('dateline');
+  const todayTotalEl = document.getElementById('todayTotal');
+
+  const today = new Date();
+  dateInput.value = today.toISOString().slice(0,10);
+  dateline.textContent = today.toLocaleDateString(undefined, { weekday:'long', month:'short', day:'numeric' });
+
+  const totalKey = 'spend-total-' + dateInput.value;
+  let todayTotal = parseFloat(localStorage.getItem(totalKey) || '0');
+  todayTotalEl.textContent = 'MVR ' + todayTotal.toFixed(2);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const amount = document.getElementById('amount').value;
+    const category = document.getElementById('category').value;
+    const date = dateInput.value;
+
+    if (SCRIPT_URL.includes('PASTE_YOUR')) {
+      statusEl.textContent = 'Set SCRIPT_URL in index.html first';
+      statusEl.classList.add('error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    statusEl.classList.remove('error');
+    statusEl.textContent = 'Adding…';
+
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ date, amount, category })
+      });
+
+      let result;
+      try {
+        result = await res.json();
+      } catch (parseErr) {
+        // Response came back but couldn't be read (rare CORS quirk with Apps Script).
+        // The write likely still succeeded — treat as success but flag it as unconfirmed.
+        result = { status: 'ok', row: '?' };
+      }
+
+      if (result.status !== 'ok') {
+        throw new Error(result.message || 'Unknown error from Apps Script');
+      }
+
+      todayTotal += parseFloat(amount);
+      localStorage.setItem(totalKey, todayTotal.toFixed(2));
+      todayTotalEl.textContent = 'MVR ' + todayTotal.toFixed(2);
+
+      statusEl.textContent = result.row === '?'
+        ? 'Sent — check sheet to confirm'
+        : 'Added to row ' + result.row + ' ✓';
+      form.reset();
+      dateInput.value = date;
+      document.getElementById('category').selectedIndex = 0;
+    } catch (err) {
+      // A genuine network-level failure (offline, bad URL, blocked request) —
+      // fall back to a no-cors send as a last resort so the row still gets written
+      // even though we can't read back a confirmation.
+      try {
+        await fetch(SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ date, amount, category })
+        });
+        todayTotal += parseFloat(amount);
+        localStorage.setItem(totalKey, todayTotal.toFixed(2));
+        todayTotalEl.textContent = 'MVR ' + todayTotal.toFixed(2);
+        statusEl.textContent = 'Sent — check sheet to confirm';
+        form.reset();
+        dateInput.value = date;
+        document.getElementById('category').selectedIndex = 0;
+      } catch (fallbackErr) {
+        statusEl.textContent = 'Failed: ' + err.message;
+        statusEl.classList.add('error');
+      }
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+</script>
+</body>
+</html>
